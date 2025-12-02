@@ -4,6 +4,52 @@ let g = new Uint8Array(N * M);
 let stepCount = 0; // 追加: ステップ数カウンタ
 let aliveHistory = []; // 追加: 生存セル履歴
 
+// ---------- 追加: GAS 送信用 URL と送信関数 ----------
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwsRh5YSdYbVLL1EH-sEYvz9P6gh3EAO-FAaJBr0Ve8EPbR266lo587td_VzcItO7dWUQ/exec';
+
+async function sendResult(alive, step) {
+  // クライアントの外部IPを取得（失敗しても送信は行う）
+  let clientIp = '';
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    if (r.ok) {
+      const j = await r.json();
+      clientIp = j.ip || '';
+    }
+  } catch (e) {
+    clientIp = '';
+  }
+
+  const payloadObj = {
+    timestamp: new Date().toISOString(),
+    ip: clientIp,
+    reverse_dns: '',
+    alive_final: Number(alive) || 0,
+    step_final: Number(step) || 0
+  };
+  const body = JSON.stringify(payloadObj);
+
+  // sendBeacon を優先（Content-Type: text/plain で送る）
+  try {
+    if (navigator && navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'text/plain' });
+      navigator.sendBeacon(GAS_URL, blob);
+      return;
+    }
+  } catch (e) {
+    // fallthrough to fetch
+  }
+
+  // フォールバック fetch（keepalive）
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: body,
+    keepalive: true
+  }).catch(() => {});
+}
+// ---------- 追加ここまで ----------
+
 // 追加: K 表記に変換するヘルパー
 function formatStep(n) {
   if (n < 1000) return String(n);
@@ -282,11 +328,14 @@ function loop() {
   // 定常検出: 1ステップ不変 または 2ステップ反復
   if (arraysEqual(g, prevGrid)) {
     gameOver = true;
+    // 送信：最終スコアをGASへ（Content-Type: text/plain の JSON 文字列）
+    sendResult(alive, stepCount);
     draw();
     return;
   }
   if (prev2Grid && arraysEqual(g, prev2Grid)) {
     gameOver = true;
+    sendResult(alive, stepCount);
     draw();
     return;
   }
