@@ -14,7 +14,7 @@ const POST_FAIL_DISPLAY_MS = 5000;
 const VERSION = 1; // <-- increment this value each time you change script.js
 
 // ---------- 追加: GAS 送信用 URL と送信関数 ----------
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwsRh5YSdYbVLL1EH-sEYvz9P6gh3EAO-FAaJBr0Ve8EPbR266lo587td_VzcItO7dWUQ/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyukYCmluB50zfc_Vc4S98E5MWZcZe7dVsNMVNi9DfI_7XIa6YQweL3C3HwE5gswN8cRg/exec';
 
 async function sendResult(alive, step) {
   console.log('[sendResult] start', { alive, step });
