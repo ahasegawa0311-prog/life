@@ -4,9 +4,11 @@ let g = new Uint8Array(N * M);
 let stepCount = 0; // 追加: ステップ数カウンタ
 let aliveHistory = []; // 追加: 生存セル履歴
 
-// 追加: POST 表示タイマー
+// 追加: POST 表示タイマー（成功/失敗）
 let postOkTimestamp = 0;
+let postFailTimestamp = 0;
 const POST_DISPLAY_MS = 5000;
+const POST_FAIL_DISPLAY_MS = 5000;
 
 // 追加: バージョン番号（スクリプトを編集したら手動で +1 してください）
 const VERSION = 1; // <-- increment this value each time you change script.js
@@ -15,7 +17,8 @@ const VERSION = 1; // <-- increment this value each time you change script.js
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwsRh5YSdYbVLL1EH-sEYvz9P6gh3EAO-FAaJBr0Ve8EPbR266lo587td_VzcItO7dWUQ/exec';
 
 async function sendResult(alive, step) {
-  // クライアントの外部IPを取得（失敗しても送信は行う）
+  console.log('[sendResult] start', { alive, step });
+  // 公開IP取得（失敗しても送信は行う）
   let clientIp = '';
   try {
     const r = await fetch('https://api.ipify.org?format=json');
@@ -24,6 +27,7 @@ async function sendResult(alive, step) {
       clientIp = j.ip || '';
     }
   } catch (e) {
+    console.warn('[sendResult] ip fetch failed', e);
     clientIp = '';
   }
 
@@ -35,16 +39,24 @@ async function sendResult(alive, step) {
     step_final: Number(step) || 0
   };
   const body = JSON.stringify(payloadObj);
+  console.log('[sendResult] payload', payloadObj);
 
   // sendBeacon を優先（Content-Type: text/plain で送る）
   try {
     if (navigator && navigator.sendBeacon) {
       const blob = new Blob([body], { type: 'text/plain' });
       const queued = navigator.sendBeacon(GAS_URL, blob);
-      if (queued) postOkTimestamp = Date.now(); // queued なら表示
+      console.log('[sendResult] sendBeacon queued=', queued);
+      if (queued) {
+        postOkTimestamp = Date.now();
+        postFailTimestamp = 0;
+      } else {
+        postFailTimestamp = Date.now();
+      }
       return;
     }
   } catch (e) {
+    console.warn('[sendResult] sendBeacon error', e);
     // fallthrough to fetch
   }
 
@@ -56,9 +68,19 @@ async function sendResult(alive, step) {
       body: body,
       keepalive: true
     });
-    if (resp && resp.ok) postOkTimestamp = Date.now();
+    console.log('[sendResult] fetch resp', resp && resp.status);
+    let text = '';
+    try { text = await resp.text(); } catch (e) { text = ''; }
+    console.log('[sendResult] fetch resp body', text);
+    if (resp && resp.ok) {
+      postOkTimestamp = Date.now();
+      postFailTimestamp = 0;
+    } else {
+      postFailTimestamp = Date.now();
+    }
   } catch (e) {
-    // ignore
+    console.error('[sendResult] fetch error', e);
+    postFailTimestamp = Date.now();
   }
 }
 // ---------- 追加ここまで ----------
@@ -169,7 +191,7 @@ function draw() {
   ctx.fillText(stepText, boxX + padding, boxY + padding / 2 + fontSize + lineGap);
   ctx.fillText(aliveText, boxX + padding, boxY + padding / 2 + (fontSize + lineGap) * 2);
 
-  // POST 表示（送信成功 or queued から一定時間表示）
+  // POST 成功表示（緑） / 失敗表示（赤）
   if (Date.now() - postOkTimestamp < POST_DISPLAY_MS) {
     const badgeText = 'POST';
     ctx.font = '12px sans-serif';
@@ -178,6 +200,22 @@ function draw() {
     const bx = boxX + boxW - bw - 6;
     const by = boxY + 4;
     ctx.fillStyle = 'rgba(0,128,0,0.9)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = 'white';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText(badgeText, bx + bw / 2, by + bh / 2);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'top';
+    ctx.font = `${fontSize}px sans-serif`;
+  } else if (Date.now() - postFailTimestamp < POST_FAIL_DISPLAY_MS) {
+    const badgeText = 'POST FAILED';
+    ctx.font = '12px sans-serif';
+    const bw = ctx.measureText(badgeText).width + 10;
+    const bh = 16;
+    const bx = boxX + boxW - bw - 6;
+    const by = boxY + 4;
+    ctx.fillStyle = 'rgba(200,0,0,0.9)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = 'white';
     ctx.textBaseline = 'middle';
